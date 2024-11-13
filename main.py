@@ -1,108 +1,159 @@
-import cv2
-import mediapipe as mp
+import cv2 as cv
+import os
 import numpy as np
+from cvzone.HandTrackingModule import HandDetector
 
-# Initialize MediaPipe and OpenCV
-mp_hands = mp.solutions.hands
-mp_drawing = mp.solutions.drawing_utils
+# Parameters
+width, height = 1280, 720
+gestureThreshold = int(height*0.75)
+folderPath = "Background"  # Path for background slides
+characterPath = "Characters"  # Path for character images
 
-# Initialize MediaPipe Hands with multi-hand detection enabled
-hands = mp_hands.Hands(static_image_mode=False, max_num_hands=2, min_detection_confidence=0.7)
+# Camera Setup
+cap = cv.VideoCapture(0)
+cap.set(3, width)
+cap.set(4, height)
 
-# Load background and character images
-backgrounds = [cv2.imread('bg1.jpg'), cv2.imread('bg2.jpg')]
-character = cv2.imread('character.png')
+# Hand Detector
+detectorHand = HandDetector(detectionCon=0.8, maxHands=1)
 
-# Function to detect gestures and control background or character
-def detect_gesture(landmarks):
-    thumb_tip = landmarks[4]
-    index_tip = landmarks[8]
-    middle_tip = landmarks[12]
+# Variables
+delay = 10
+buttonPressed = False
+counter = 0
+imgNumber = 0
+characterNumber = 0
+showCharacter = False
+lockedCharacters = []  # Store locked characters and their positions
+lastImgNumber = -1  # Track the last image number to detect changes
 
-    # Gesture 1: Thumbs up
-    if thumb_tip.y < index_tip.y and thumb_tip.y < middle_tip.y:
-        return 'thumbs_up'
-    # Gesture 2: Open hand
-    elif (thumb_tip.x < index_tip.x) and (middle_tip.x > index_tip.x):
-        return 'open_hand'
-    # Gesture 3: Peace sign
-    elif (index_tip.y < thumb_tip.y) and (middle_tip.y < thumb_tip.y):
-        return 'peace'
-    return None
+# Get list of presentation images and character images
+pathImages = sorted([f for f in os.listdir(folderPath) if f.endswith(".jpg") or f.endswith(".png")], key=len)
+# Load and resize character images to 100x100 pixels
+characterImages = [cv.resize(cv.imread(os.path.join(characterPath, f), cv.IMREAD_UNCHANGED), 
+                             (200, 200), interpolation=cv.INTER_AREA) 
+                   for f in sorted(os.listdir(characterPath), key=len)]
 
-# Main application loop
-cap = cv2.VideoCapture(0)
-cv2.namedWindow("Gesture Feed")
-cv2.namedWindow("Display")
+# Function to overlay transparent character image on an RGBA background
+def overlay_character(background, character, position):
+    if background is None or character is None:
+        return  # Skip if background or character not loaded
 
-desired_width = 640
-desired_height = 480
+    # Ensure the background is RGBA
+    if background.shape[2] == 3:
+        background = cv.cvtColor(background, cv.COLOR_BGR2BGRA)
 
-cap.set(cv2.CAP_PROP_FRAME_WIDTH, desired_width)
-cap.set(cv2.CAP_PROP_FRAME_HEIGHT, desired_height)
+    # Resize the character image to 100x100
+    character = cv.resize(character, (100, 100), interpolation=cv.INTER_AREA)
+    h, w = character.shape[:2]
+    x, y = position
 
-# Track the state of background and character display
-background_idx = 0  # Index of current background
-show_character = True  # Toggle character display
+    # Ensure overlay stays within background bounds
+    x = min(max(0, x), background.shape[1] - 1)
+    y = min(max(0, y), background.shape[0] - 1)
 
-while cap.isOpened():
-    success, frame = cap.read()
-    if not success:
-        print("Ignoring empty camera frame.")
+    # Calculate the overlay region’s valid width and height
+    valid_width = min(w, background.shape[1] - x)
+    valid_height = min(h, background.shape[0] - y)
+
+    # Adjust the character image if it exceeds the background bounds
+    char_rgb = character[:valid_height, :valid_width, :3]
+    alpha_mask = character[:valid_height, :valid_width, 3] / 255.0
+
+    # Blend character with background
+    for c in range(3):  # Blend RGB channels
+        background[y:y+valid_height, x:x+valid_width, c] = (
+            alpha_mask * char_rgb[:, :, c] + 
+            (1 - alpha_mask) * background[y:y+valid_height, x:x+valid_width, c]
+        )
+
+while True:
+    # Get image frame
+    ret, img = cap.read()
+    img = cv.flip(img, 1)
+
+    # Load and convert background image to RGBA
+    pathFullImage = os.path.join(folderPath, pathImages[imgNumber])
+    imgCurrent = cv.imread(pathFullImage)
+    if imgCurrent is None:
+        print(f"Failed to load image: {pathFullImage}")
         continue
+    imgCurrent = cv.cvtColor(imgCurrent, cv.COLOR_BGR2BGRA)
 
-    # Flip the image horizontally for a later selfie-view display
-    frame = cv2.flip(frame, 1)
-    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-    results = hands.process(frame_rgb)
+    # Detect if the background has changed
+    if imgNumber != lastImgNumber:
+        # Clear locked characters only when the background changes
+        lockedCharacters = []
+        lastImgNumber = imgNumber  # Update the last image number to the current one
 
-    # Initialize display frame with the current background
-    display_frame = backgrounds[background_idx].copy()
+    # Detect hands
+    hands, img = detectorHand.findHands(img)
+    cv.line(img, (0, gestureThreshold), (width, gestureThreshold), (0, 255, 0), 10)
 
-    # Check if any hands are detected
-    if results.multi_hand_landmarks:
-        for hand_idx, hand_landmarks in enumerate(results.multi_hand_landmarks):
-            # Draw hand landmarks on the gesture feed
-            mp_drawing.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
+    if hands and not buttonPressed:
+        hand = hands[0]
+        cx, cy = hand["center"]
+        lmList = hand["lmList"]
+        fingers = detectorHand.fingersUp(hand)
+        xVal = int(np.interp(lmList[8][0], [width // 2, width], [0, width]))
+        yVal = int(np.interp(lmList[8][1], [150, height - 150], [0, height]))
+        indexFinger = (xVal, yVal)
 
-            # Detect gesture
-            gesture = detect_gesture(hand_landmarks.landmark)
+        if cy <= gestureThreshold:
+            if fingers == [1, 0, 0, 0, 0]:  # Left Slide
+                print("Left")
+                buttonPressed = True
+                imgNumber = max(0, imgNumber - 1)  # Move to previous image
+            elif fingers == [0, 0, 0, 0, 1]:  # Right Slide
+                print("Right")
+                buttonPressed = True
+                imgNumber = min(len(pathImages) - 1, imgNumber + 1)  # Move to next image
+            elif fingers == [0, 1, 0, 0, 1]:  # Switch Character
+                characterNumber = (characterNumber + 1) % len(characterImages)
+                buttonPressed = True
+            elif fingers == [0, 1, 1, 1, 0]:  # Lock Character
+                print("Character Locked")
+                lockedCharacters.append((characterNumber, indexFinger))  # Lock the current character at its position
+                buttonPressed = True
+            elif fingers == [1, 1, 1, 1, 1]:  # Fist gesture to clear all locked characters
+                if lockedCharacters:
+                    print("Clear Last Locked Character")
+                    lockedCharacters.pop()  # Pop last locked character
+                buttonPressed = True
 
-            # Right hand controls the background
-            if hand_idx == 0 and gesture:
-                if gesture == 'thumbs_up':
-                    background_idx = 0  # Show first background
-                elif gesture == 'open_hand':
-                    background_idx = 1  # Show second background
+        elif fingers == [0, 1, 0, 0, 0]:  # Show Character
+            showCharacter = True
 
-            # Left hand controls the character
-            elif hand_idx == 1 and gesture:
-                if gesture == 'thumbs_up':
-                    show_character = True  # Toggle character ON
-                elif gesture == 'open_hand':
-                    show_character = False  # Toggle character OFF
-                elif gesture == 'peace' and show_character:
-                    # Move character to left hand position if character is ON
-                    x = int(hand_landmarks.landmark[8].x * display_frame.shape[1])  # Index finger x position
-                    y = int(hand_landmarks.landmark[8].y * display_frame.shape[0])  # Index finger y position
+    if buttonPressed:
+        counter += 1
+        if counter > delay:
+            counter = 0
+            buttonPressed = False
 
-                    # Resize character image if necessary
-                    char_h, char_w = character.shape[:2] 
+    # Overlay all locked characters on the current background
+    for charNum, pos in lockedCharacters:
+        overlay_character(imgCurrent, characterImages[charNum], pos)
 
-                    # Ensure character doesn't go out of bounds
-                    if y + char_h <= display_frame.shape[0] and x + char_w <= display_frame.shape[1]:
-                        # Overlay character directly onto the background
-                        display_frame[y:y+char_h, x:x+char_w] = character
+    # Overlay character if enabled (real-time)
+    if showCharacter and characterImages:
+        overlay_character(imgCurrent, characterImages[characterNumber], indexFinger)
 
-    # Show the gesture feed and the display frame with background and character
-    cv2.imshow("Gesture Feed", frame)
-    cv2.imshow("Display", display_frame)
+    # Resize the image to fit the presentation window size (1200x800)
+    imgCurrent = cv.resize(imgCurrent, (900, 600))
 
-    # Exit when 'q' is pressed
-    if cv2.waitKey(5) & 0xFF == ord('q'):
+    # Resize the camera feed to fit the smaller window (400x400)
+    imgSmall = cv.resize(img, (600, 400))
+
+    # Display the presentation window
+    cv.imshow("Presentation", imgCurrent)
+
+    # Display the camera feed in a smaller window
+    cv.imshow("Camera Feed", imgSmall)
+
+    # Exit
+    key = cv.waitKey(1)
+    if key == ord('q'):
         break
 
-# Cleanup
 cap.release()
-cv2.destroyAllWindows()
-hands.close()
+cv.destroyAllWindows()
