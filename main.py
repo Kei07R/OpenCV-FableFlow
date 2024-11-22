@@ -115,7 +115,7 @@ while True:
                 print("Character Locked")
                 lockedCharacters.append((characterNumber, indexFinger))  # Lock the current character at its position
                 buttonPressed = True
-            elif fingers == [1, 1, 1, 1, 1]:  # Fist gesture to clear all locked characters
+            elif fingers == [1, 1, 1, 1, 1]:  # Fist gesture to clear last locked character
                 if lockedCharacters:
                     print("Clear Last Locked Character")
                     lockedCharacters.pop()  # Pop last locked character
@@ -145,7 +145,7 @@ while True:
     imgSmall = cv.resize(img, (600, 400))
 
     # Display the presentation window
-    cv.imshow("Presentation", imgCurrent)
+    cv.imshow("Story", imgCurrent)
 
     # Display the camera feed in a smaller window
     cv.imshow("Camera Feed", imgSmall)
