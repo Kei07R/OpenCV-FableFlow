@@ -19,13 +19,13 @@ st.markdown(
 st.markdown("---")
 
 # Second title for the gestures section
-st.header("Gesture-Controlls")
+st.header("Gesture-Controls")
 
 # Display images with descriptions, custom size, and borders
 images_and_descriptions = [
     {"path": "./Gestures/Gesture1.png", "description": "Control the position of subjects"},
     {"path": "./Gestures/Gesture2.png", "description": "Freeze the current subject in place"},
-    {"path": "./Gestures/Gesture3.png", "description": "Remove the last forzen subject"},
+    {"path": "./Gestures/Gesture3.png", "description": "Remove the last frozen subject"},
     {"path": "./Gestures/Gesture4.png", "description": "Change the character to the next one"},
     {"path": "./Gestures/Gesture5.png", "description": "Move to next background"},
     {"path": "./Gestures/Gesture6.png", "description": "Move to previous background"}
@@ -40,20 +40,23 @@ st.markdown("Made by Riya Rai [230] & Kartikeiya Rai [200]")
 
 # Display images and descriptions in two columns
 for idx, item in enumerate(images_and_descriptions):
-    # Load image
-    image = Image.open(item["path"])
+    try:
+        # Load image
+        image = Image.open(item["path"])
 
-    # Resize image to 200x200
-    image = image.resize((210, 210))
+        # Resize image to 200x200
+        image = image.resize((210, 210))
 
-    # Add a border (e.g., 5px black border)
-    border_width = 5
-    image_with_border = ImageOps.expand(image, border=border_width, fill="black")
+        # Add a border (e.g., 5px black border)
+        border_width = 5
+        image_with_border = ImageOps.expand(image, border=border_width, fill="black")
 
-    # Assign to columns alternately
-    with cols[idx % 3]:
-        # Display the image with its description
-        st.image(image_with_border, caption=item["description"], use_container_width=False)
+        # Assign to columns alternately
+        with cols[idx % 3]:
+            # Display the image with its description
+            st.image(image_with_border, caption=item["description"], use_container_width=False)
+    except FileNotFoundError:
+        st.error(f"Could not find image: {item['path']}")
 
 # Sidebar for user controls
 st.sidebar.title("Controls")
@@ -62,7 +65,7 @@ exit_button = st.sidebar.button("Exit")
 
 # Parameters
 width, height = 1280, 720
-gestureThreshold = int(height * 0.75)
+gestureThreshold = int(height * 0.25)
 folderPath = "Background"  # Path for background slides
 characterPath = "Characters"  # Path for character images
 
@@ -79,11 +82,11 @@ showCharacter = False
 lockedCharacters = []  # Store locked characters and their positions
 lastImgNumber = -1  # Track the last image number to detect changes
 
-# Get list of presentation images and character images
 pathImages = sorted([f for f in os.listdir(folderPath) if f.endswith(".jpg") or f.endswith(".png")], key=len)
+# Load and resize character images to 100x100 pixels
 characterImages = [
-    cv.resize(cv.imread(os.path.join(characterPath, f), cv.IMREAD_UNCHANGED), (200, 200), interpolation=cv.INTER_AREA)
-    for f in sorted(os.listdir(characterPath), key=len)
+    cv.resize(cv.imread(os.path.join(characterPath, f), cv.IMREAD_UNCHANGED), (100, 100), interpolation=cv.INTER_AREA)
+    for f in sorted(os.listdir(characterPath)) if f.lower().endswith(('.png', '.jpg', '.jpeg'))
 ]
 
 # Function to overlay transparent character image on an RGBA background
@@ -96,7 +99,7 @@ def overlay_character(background, character, position):
         background = cv.cvtColor(background, cv.COLOR_BGR2BGRA)
 
     # Resize the character image to 100x100
-    character = cv.resize(character, (100, 100), interpolation=cv.INTER_AREA)
+    character = cv.resize(character, (250, 250), interpolation=cv.INTER_AREA)
     h, w = character.shape[:2]
     x, y = position
 
@@ -134,8 +137,12 @@ if camera_button:
         img = cv.flip(img, 1)
 
         # Load and convert background image to RGBA
-        pathFullImage = os.path.join(folderPath, pathImages[imgNumber])
-        imgCurrent = cv.imread(pathFullImage)
+        if 0 <= imgNumber < len(pathImages):
+            pathFullImage = os.path.join(folderPath, pathImages[imgNumber])
+            imgCurrent = cv.imread(pathFullImage)
+        else:
+            imgCurrent = None
+
         if imgCurrent is None:
             st.error(f"Failed to load image: {pathFullImage}")
             break
@@ -159,7 +166,7 @@ if camera_button:
             yVal = int(np.interp(lmList[8][1], [150, height - 150], [0, height]))
             indexFinger = (xVal, yVal)
 
-            if cy <= gestureThreshold:
+            if cy > gestureThreshold:
                 if fingers == [1, 0, 0, 0, 0]:  # Left Slide
                     imgNumber = max(0, imgNumber - 1)
                     buttonPressed = True
@@ -198,8 +205,8 @@ if camera_button:
         imgCurrent = cv.cvtColor(cv.resize(imgCurrent, (900, 600)), cv.COLOR_BGRA2RGB)
         imgSmall = cv.cvtColor(cv.resize(img, (600, 400)), cv.COLOR_BGR2RGB)
 
-        stframe1.image(imgCurrent, caption="Presentation", use_column_width=True)
-        stframe2.image(imgSmall, caption="Camera Feed", use_column_width=True)
+        stframe1.image(imgCurrent, caption="Presentation", width=900)  # Set explicit width
+        stframe2.image(imgSmall, caption="Camera Feed", width=600)    # Set explicit width
 
         # Break loop if user presses the Exit button
         if exit_button:
