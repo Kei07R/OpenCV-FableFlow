@@ -5,7 +5,7 @@ from cvzone.HandTrackingModule import HandDetector
 
 # Parameters
 width, height = 1280, 720
-gestureThreshold = int(height*0.75)
+gestureThreshold = int(height * 0.35)
 folderPath = "Background"  # Path for background slides
 characterPath = "Characters"  # Path for character images
 
@@ -18,7 +18,7 @@ cap.set(4, height)
 detectorHand = HandDetector(detectionCon=0.8, maxHands=1)
 
 # Variables
-delay = 10
+delay = 15
 buttonPressed = False
 counter = 0
 imgNumber = 0
@@ -27,12 +27,16 @@ showCharacter = False
 lockedCharacters = []  # Store locked characters and their positions
 lastImgNumber = -1  # Track the last image number to detect changes
 
+print(f"Character Path: {characterPath}")
+print(f"Files in Character Path: {os.listdir(characterPath)}")
+
 # Get list of presentation images and character images
 pathImages = sorted([f for f in os.listdir(folderPath) if f.endswith(".jpg") or f.endswith(".png")], key=len)
 # Load and resize character images to 100x100 pixels
-characterImages = [cv.resize(cv.imread(os.path.join(characterPath, f), cv.IMREAD_UNCHANGED), 
-                             (200, 200), interpolation=cv.INTER_AREA) 
-                   for f in sorted(os.listdir(characterPath), key=len)]
+characterImages = [
+    cv.resize(cv.imread(os.path.join(characterPath, f), cv.IMREAD_UNCHANGED), (100, 100), interpolation=cv.INTER_AREA)
+    for f in sorted(os.listdir(characterPath)) if f.lower().endswith(('.png', '.jpg', '.jpeg'))
+]
 
 # Function to overlay transparent character image on an RGBA background
 def overlay_character(background, character, position):
@@ -43,8 +47,8 @@ def overlay_character(background, character, position):
     if background.shape[2] == 3:
         background = cv.cvtColor(background, cv.COLOR_BGR2BGRA)
 
-    # Resize the character image to 100x100
-    character = cv.resize(character, (100, 100), interpolation=cv.INTER_AREA)
+    # Resize the character image to 200x200
+    character = cv.resize(character, (250, 250), interpolation=cv.INTER_AREA)
     h, w = character.shape[:2]
     x, y = position
 
@@ -99,7 +103,7 @@ while True:
         yVal = int(np.interp(lmList[8][1], [150, height - 150], [0, height]))
         indexFinger = (xVal, yVal)
 
-        if cy <= gestureThreshold:
+        if cy > gestureThreshold:
             if fingers == [1, 0, 0, 0, 0]:  # Left Slide
                 print("Left")
                 buttonPressed = True
@@ -109,6 +113,7 @@ while True:
                 buttonPressed = True
                 imgNumber = min(len(pathImages) - 1, imgNumber + 1)  # Move to next image
             elif fingers == [0, 1, 0, 0, 1]:  # Switch Character
+                print("Character Switched")
                 characterNumber = (characterNumber + 1) % len(characterImages)
                 buttonPressed = True
             elif fingers == [0, 1, 1, 1, 0]:  # Lock Character
