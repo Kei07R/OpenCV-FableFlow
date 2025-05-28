@@ -23,3 +23,13 @@ git clone https://github.com/Kei07R/OpenCV-FableFlow.git
 cd OpenCV-FableFlow
 pip install -r requirements.txt
 python main.py
+```
+
+## 📹 Usage
+
+- Run the application.
+- Use hand gestures to:
+  -- Move characters around the screen
+  -- Change characters
+  -- Switch story backgrounds
+- Start narrating your interactive story!
