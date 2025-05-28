@@ -29,7 +29,7 @@ python main.py
 
 - Run the application.
 - Use hand gestures to:
-  -- Move characters around the screen
-  -- Change characters
-  -- Switch story backgrounds
+  | Move characters around the screen
+  | Change characters
+  | Switch story backgrounds
 - Start narrating your interactive story!
