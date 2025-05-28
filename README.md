@@ -19,7 +19,7 @@
 ## 🚀 Installation
 
 ```bash
-git clone https://github.com/your-username/fableflow.git
-cd fableflow
+git clone https://github.com/Kei07R/OpenCV-FableFlow.git
+cd OpenCV-FableFlow
 pip install -r requirements.txt
 python main.py
